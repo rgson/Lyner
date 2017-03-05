@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import collections
 
 ################################################################################
@@ -156,8 +157,8 @@ def draw(solution):
 ################################################################################
 # Program
 
-# Test boards:
-description = 'A0A/aaa'
-# description = 'B22B/2a22/AbbA'
-#description = 'b2B0/B22A/a02C/C32c/aAcc'
-draw(solve(description))
+parser = argparse.ArgumentParser()
+parser.add_argument('puzzle', help='textual description of the LYNE puzzle')
+args = parser.parse_args()
+
+draw(solve(args.puzzle))
