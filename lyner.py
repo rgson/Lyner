@@ -2,6 +2,8 @@
 
 import argparse
 import collections
+import itertools
+import PIL.Image
 
 ################################################################################
 # Solve puzzle
@@ -155,10 +157,113 @@ def draw(solution):
         print('\t', '\n\t'.join(''.join(x) for x in out), '\n', sep='')
 
 ################################################################################
+# Parse image
+
+class Rectangle:
+
+    def __init__(self, x, y):
+        self.left = self.right  = x
+        self.top  = self.bottom = y
+
+    def __contains__(self, point):
+        return (self.left <= point[0] <= self.right and
+                self.top  <= point[1] <= self.bottom)
+
+    def near(self, x, y, threshold=10):
+        return (self.left - threshold <= x <= self.right  + threshold and
+                self.top  - threshold <= y <= self.bottom + threshold )
+
+    def center(self):
+        return (round((self.left + self.right) / 2),
+                round((self.top + self.bottom) / 2))
+
+    def expand(self, x, y):
+        if (x, y) not in self:
+            self.left   = min(self.left,   x)
+            self.right  = max(self.right,  x)
+            self.top    = min(self.top,    y)
+            self.bottom = max(self.bottom, y)
+
+def parse_image(imagefile):
+    colors = {(206, 137,  48, 255): 'a', # Yellow
+              ( 74, 178, 255, 255): 'b', # Blue
+              (198,   0,   0, 255): 'c', # Red
+              (255, 165,  21, 255): 'A', # Yellow (bright)
+              (  0, 134, 255, 255): 'B', # Blue (bright)
+              (252,  31,  32, 255): 'C', # Red (bright)
+              (209, 207, 184, 255): '0'} # Neutral
+    # Load image.
+    image = PIL.Image.open(imagefile)
+    width, height = image.size
+    pixels = image.load()
+    # Find sections containing nodes.
+    sections = collections.defaultdict(list)
+    current = None # The currently relevant (symbol, rectangle). Optimization.
+    for x, y in itertools.product(range(width), range(height)):
+        if pixels[x, y] in colors:
+            symbol = colors[pixels[x, y]]
+            if current is None or current[0] != symbol:
+                try:
+                    rect = next(r for r in sections[symbol] if r.near(x, y))
+                except StopIteration:
+                    rect = Rectangle(x, y)
+                    sections[symbol].append(rect)
+                current = (symbol, rect)
+            current[1].expand(x, y)
+        else:
+            current = None
+    # Remove false positives within goal nodes.
+    for lower in ('a', 'b', 'c'):
+        for goal in sections[lower.upper()]:
+            for rect in [r for r in sections[lower] if r.center() in goal]:
+                sections[lower].remove(rect)
+    # Count the holes in the neutral nodes.
+    for r in sections['0']:
+        cx, cy = r.center()
+        hole = (30, 30, 30, 255) # Background color
+        num = sum((any(pixels[cx, y] == hole for y in range(cy, r.top, -1)),  # Up
+                   any(pixels[cx, y] == hole for y in range(cy, r.bottom)),   # Down
+                   any(pixels[x, cy] == hole for x in range(cx, r.left, -1)), # Left
+                   any(pixels[x, cy] == hole for x in range(cx, r.right))))   # Right
+        sections[str(num)].append(r)
+    del sections['0']
+    # Find grid structure.
+    nodes = [(symbol, rect) for symbol, sect in sections.items() for rect in sect]
+    grid_rows, grid_cols = {}, {}
+    row_known, col_known = set(), set()
+    for node in nodes:
+        if node not in row_known:
+            cx, cy = node[1].center()
+            grid_rows[cy] = [n for n in nodes if n[1].top <= cy <= n[1].bottom]
+            row_known |= set(grid_rows[cy])
+        if node not in col_known:
+            cx, cy = node[1].center()
+            grid_cols[cx] = [n for n in nodes if n[1].left <= cx <= n[1].right]
+            col_known |= set(grid_cols[cx])
+    i_to_row = dict(enumerate(sorted(grid_rows)))
+    j_to_col = dict(enumerate(sorted(grid_cols)))
+    grid = [[''] * len(grid_cols) for row in grid_rows]
+    for i, row in enumerate(grid):
+        for j in range(len(row)):
+            r, c = i_to_row[i], j_to_col[j]
+            row[j] = next((n[0] for n in grid_rows[r] if n in grid_cols[c]), '0')
+    # Convert to textual description.
+    description = '/'.join(''.join(row) for row in grid)
+    return description
+
+################################################################################
 # Program
 
 parser = argparse.ArgumentParser()
-parser.add_argument('puzzle', help='textual description of the LYNE puzzle')
+parser.add_argument('-v', action='store_true', help='increase output verbosity')
+inputs = parser.add_argument_group('puzzle input')
+inputs = inputs.add_mutually_exclusive_group(required=True)
+inputs.add_argument('puzzle', nargs='?', help='solves a puzzle from a textual description')
+inputs.add_argument('-i', '--image', help='solves a puzzle from an image file')
 args = parser.parse_args()
 
-draw(solve(args.puzzle))
+
+puzzle = parse_image(args.image) if args.image else args.puzzle
+if args.v:
+    print('Puzzle:', puzzle)
+draw(solve(puzzle))
