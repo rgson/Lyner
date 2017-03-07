@@ -4,6 +4,9 @@ import argparse
 import collections
 import itertools
 import PIL.Image
+import subprocess
+import sys
+import tempfile
 
 ################################################################################
 # Solve puzzle
@@ -253,6 +256,21 @@ def parse_image(imagefile):
     return description
 
 ################################################################################
+# Capture screen
+
+def parse_screenshot():
+    if not sys.platform.startswith('linux'):
+        raise Exception('Unsupported platform')
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Capture window to temporary image file.
+        imagefile = tmpdir + '/screenshot.png'
+        res = subprocess.run(['timeout', '1', 'import', '-screen', '-window', 'LYNE', imagefile],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if res.returncode > 0:
+            raise Exception('Failed to capture LYNE window')
+        return parse_image(imagefile)
+
+################################################################################
 # Program
 
 parser = argparse.ArgumentParser()
@@ -261,10 +279,17 @@ inputs = parser.add_argument_group('puzzle input')
 inputs = inputs.add_mutually_exclusive_group(required=True)
 inputs.add_argument('puzzle', nargs='?', help='solves a puzzle from a textual description')
 inputs.add_argument('-i', '--image', help='solves a puzzle from an image file')
+inputs.add_argument('-s', '--screen', action='store_true', help='solves a puzzle visible on the screen')
 args = parser.parse_args()
 
+if args.screen:
+    puzzle = parse_screenshot()
+elif args.image:
+    puzzle = parse_image(args.image)
+elif args.puzzle:
+    puzzle = args.puzzle
 
-puzzle = parse_image(args.image) if args.image else args.puzzle
 if args.v:
     print('Puzzle:', puzzle)
+
 draw(solve(puzzle))
