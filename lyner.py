@@ -3,6 +3,7 @@
 import argparse
 import collections
 import itertools
+import os
 import PIL.Image
 import subprocess
 import sys
@@ -282,53 +283,94 @@ def draw(solution):
 def auto_mode(args):
     if not sys.platform.startswith('linux'):
         return print('Unsupported platform', file=sys.stderr)
-    wnd = XWindow('LYNE')
-    wnd.activate()
-    puzzle, row_coords, col_coords = parse_screenshot(return_coords=True)
-    if not puzzle:
-        return print('Failed to find puzzle', file=sys.stderr)
-    print('Puzzle:', puzzle)
-    solution = solve(puzzle)
-    if not solution:
-        return print('Failed to solve puzzle', file=sys.stderr)
-    print('Solution:', solution)
-    if not args.dont_act:
-        for path in solution:
-            row, col = path[0]
-            x, y = col_coords[col], row_coords[row]
-            wnd.mousemove(x, y)
-            wnd.mousedown()
-            for row, col in path[1:]:
-                x, y = col_coords[col], row_coords[row]
-                wnd.mousemove(x, y)
-            wnd.mouseup()
+    for p in ('timeout', 'import', 'xdotool'):
+        if not program_exists(p):
+            return print('Program {0} must be installed'.format(p), file=sys.stderr)
+    try:
+        print('Searching for the LYNE window...')
+        wnd = XWindow.search('LYNE')
+        # Look for puzzles to solve until interrupted.
+        try:
+            while True:
+                wait_until_active(wnd)
+                print('Watching for puzzles...')
+                puzzle, row_coords, col_coords = wait_until_puzzle()
+                print('Puzzle:', puzzle)
+                solution = solve(puzzle)
+                if not solution:
+                    print('Failed to solve puzzle', file=sys.stderr)
+                    continue
+                print('Solution:', solution)
+                if not args.dont_act:
+                    wait_until_active(wnd)
+                    act_out_solution(wnd, solution, row_coords, col_coords)
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+    except subprocess.CalledProcessError:
+        print('Failed to find LYNE window', file=sys.stderr)
 
 class XWindow:
 
-    def __init__(self, title, action_delay=0.1):
-        self.title = title
-        self.delay = action_delay
-        self.id = str(self.search().stdout, 'utf-8').strip()
-
-    def _action(self, cmd):
-        res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        time.sleep(self.delay)
-        return res
-
-    def search(self):
-        return self._action('xdotool search --name ^{0}$'.format(self.title))
+    def __init__(self, id):
+        self.id = id
 
     def activate(self):
-        return self._action('xdotool windowactivate {0}'.format(self.id))
+        return XWindow._action('xdotool windowactivate {0}'.format(self.id))
 
     def mousemove(self, x, y):
-        return self._action('xdotool mousemove --window {0} {1} {2}'.format(self.id, x, y))
+        return XWindow._action('xdotool mousemove --window {0} {1} {2}'.format(self.id, x, y))
 
     def mousedown(self):
-        return self._action('xdotool mousedown 1')
+        return XWindow._action('xdotool mousedown 1')
 
     def mouseup(self):
-        return self._action('xdotool mouseup 1')
+        return XWindow._action('xdotool mouseup 1')
+
+    def is_active(self):
+        try:
+            return XWindow.getactivewindow().id == self.id
+        except:
+            return False
+
+    @classmethod
+    def search(clazz, name):
+        res = XWindow._action('xdotool search --name ^{0}$'.format(name), delay=0)
+        id = str(res.stdout, 'utf-8').strip()
+        return clazz(id)
+
+    @classmethod
+    def getactivewindow(clazz):
+        res = XWindow._action('xdotool getactivewindow', delay=0)
+        id = str(res.stdout, 'utf-8').strip()
+        return clazz(id)
+
+    @staticmethod
+    def _action(cmd, delay=0.1):
+        res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        time.sleep(delay)
+        return res
+
+def program_exists(name):
+    try:
+        subprocess.run([name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except OSError as e:
+        return e.errno != os.errno.ENOENT
+
+def wait_until_active(wnd):
+    if not wnd.is_active():
+        print('Paused. Please activate the LYNE window to resume.')
+        while not wnd.is_active():
+            time.sleep(1)
+
+def wait_until_puzzle():
+    while True:
+        puzzle, row_coords, col_coords = parse_screenshot(return_coords=True)
+        if puzzle:
+            return (puzzle, row_coords, col_coords)
+        time.sleep(1)
+
 
 def parse_screenshot(return_coords=False):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -338,6 +380,17 @@ def parse_screenshot(return_coords=False):
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if res.returncode == 0:
             return parse_image(imagefile, return_coords=return_coords)
+
+def act_out_solution(wnd, solution, row_coords, col_coords):
+    for path in solution:
+        row, col = path[0]
+        x, y = col_coords[col], row_coords[row]
+        wnd.mousemove(x, y)
+        wnd.mousedown()
+        for row, col in path[1:]:
+            x, y = col_coords[col], row_coords[row]
+            wnd.mousemove(x, y)
+        wnd.mouseup()
 
 ################################################################################
 # Arguments
