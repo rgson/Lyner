@@ -18,8 +18,11 @@ The board to be solved is represented in a textual template format, as follows:
 
 ### Examples
 
-Picture                                          | Text
--------------------------------------------------|---------------------------
-[`test-image/1.png`](test-image/1.png)           | `A0A/aaa`
-[`test-image/tuea14.png`](test-image/tuea14.png) | `B22B/2a22/AbbA`
-[`test-image/f25.png`](test-image/f25.png)       | `b2B0/B22A/a02C/C32c/aAcc`
+Picture                      | Text
+-----------------------------|-----
+[`A  3`](test-image/a03.png) | `A0A/aaa`
+[`A  6`](test-image/a06.png) | `Aaa/B0A/bbB`
+[`A 17`](test-image/a17.png) | `AB/2b/AB`
+[`B  9`](test-image/b09.png) | `ABC/abc/ABC`
+[`B 18`](test-image/b18.png) | `BAC/022/0c2/CAB`
+[`B 25`](test-image/b25.png) | `ACB/2C2/acb/B2A`

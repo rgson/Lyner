@@ -185,15 +185,17 @@ class Rectangle:
             self.bottom = max(self.bottom, y)
 
 def parse_image(imagefile):
-    colors = {(206, 137,  48, 255): 'a', # Yellow
-              ( 74, 178, 255, 255): 'b', # Blue
-              (198,   0,   0, 255): 'c', # Red
-              (255, 165,  21, 255): 'A', # Yellow (bright)
-              (  0, 134, 255, 255): 'B', # Blue (bright)
-              (252,  31,  32, 255): 'C', # Red (bright)
-              (209, 207, 184, 255): '0'} # Neutral
+    colors = {(168, 219, 168): 'a', # Triangle
+              ( 59, 134, 134): 'b', # Diamond
+              (194, 120,  92): 'c', # Square
+              (206, 240, 183): 'A', # Triangle (goal)
+              ( 11,  72, 107): 'B', # Diamond (goal)
+              (190,  79,  35): 'C', # Square (goal)
+              (167, 219, 216): '0'} # Neutral
+    bgcolor = (121, 189, 154)       # Background
     # Load image.
     image = PIL.Image.open(imagefile)
+    image = image.convert(mode='RGB')
     width, height = image.size
     pixels = image.load()
     # Find sections containing nodes.
@@ -220,11 +222,10 @@ def parse_image(imagefile):
     # Count the holes in the neutral nodes.
     for r in sections['0']:
         cx, cy = r.center()
-        hole = (30, 30, 30, 255) # Background color
-        num = sum((any(pixels[cx, y] == hole for y in range(cy, r.top, -1)),  # Up
-                   any(pixels[cx, y] == hole for y in range(cy, r.bottom)),   # Down
-                   any(pixels[x, cy] == hole for x in range(cx, r.left, -1)), # Left
-                   any(pixels[x, cy] == hole for x in range(cx, r.right))))   # Right
+        num = sum((any(pixels[cx, y] == bgcolor for y in range(cy, r.top, -1)),  # Up
+                   any(pixels[cx, y] == bgcolor for y in range(cy, r.bottom)),   # Down
+                   any(pixels[x, cy] == bgcolor for x in range(cx, r.left, -1)), # Left
+                   any(pixels[x, cy] == bgcolor for x in range(cx, r.right))))   # Right
         sections[str(num)].append(r)
     del sections['0']
     # Find grid structure.
