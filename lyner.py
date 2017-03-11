@@ -383,7 +383,7 @@ class XWindow:
         return clazz(id)
 
     @staticmethod
-    def _action(cmd, delay=0.1):
+    def _action(cmd, delay=0.025):
         res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         time.sleep(delay)
         return res
