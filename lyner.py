@@ -7,6 +7,7 @@ import PIL.Image
 import subprocess
 import sys
 import tempfile
+import time
 
 ################################################################################
 # Solve puzzle
@@ -187,7 +188,7 @@ class Rectangle:
             self.top    = min(self.top,    y)
             self.bottom = max(self.bottom, y)
 
-def parse_image(imagefile):
+def parse_image(imagefile, return_coords=False):
     colors = {(168, 219, 168): 'a', # Triangle
               ( 59, 134, 134): 'b', # Diamond
               (194, 120,  92): 'c', # Square
@@ -244,21 +245,21 @@ def parse_image(imagefile):
             cx, cy = node[1].center()
             grid_cols[cx] = [n for n in nodes if n[1].left <= cx <= n[1].right]
             col_known |= set(grid_cols[cx])
-    i_to_row = dict(enumerate(sorted(grid_rows)))
-    j_to_col = dict(enumerate(sorted(grid_cols)))
+    row_coords = sorted(grid_rows)
+    col_coords = sorted(grid_cols)
     grid = [[''] * len(grid_cols) for row in grid_rows]
     for i, row in enumerate(grid):
         for j in range(len(row)):
-            r, c = i_to_row[i], j_to_col[j]
+            r, c = row_coords[i], col_coords[j]
             row[j] = next((n[0] for n in grid_rows[r] if n in grid_cols[c]), '0')
     # Convert to textual description.
     description = '/'.join(''.join(row) for row in grid)
-    return description
+    return description if not return_coords else (description, row_coords, col_coords)
 
 ################################################################################
 # Capture screen
 
-def parse_screenshot():
+def parse_screenshot(return_coords=False):
     if not sys.platform.startswith('linux'):
         raise Exception('Unsupported platform')
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -268,7 +269,56 @@ def parse_screenshot():
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if res.returncode > 0:
             raise Exception('Failed to capture LYNE window')
-        return parse_image(imagefile)
+        return parse_image(imagefile, return_coords=return_coords)
+
+################################################################################
+# Fully automated
+
+class XWindow:
+
+    def __init__(self, title, action_delay=0.1):
+        self.title = title
+        self.delay = action_delay
+        self.id = str(self.search().stdout, 'utf-8').strip()
+
+    def _action(self, cmd):
+        res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        time.sleep(self.delay)
+        return res
+
+    def search(self):
+        return self._action('xdotool search --name ^{0}$'.format(self.title))
+
+    def activate(self):
+        return self._action('xdotool windowactivate {0}'.format(self.id))
+
+    def mousemove(self, x, y):
+        return self._action('xdotool mousemove --window {0} {1} {2}'.format(self.id, x, y))
+
+    def mousedown(self):
+        return self._action('xdotool mousedown 1')
+
+    def mouseup(self):
+        return self._action('xdotool mouseup 1')
+
+def automate():
+    wnd = XWindow('LYNE')
+    wnd.activate()
+    puzzle, row_coords, col_coords = parse_screenshot(return_coords=True)
+    if len(puzzle) == 0:
+        raise Exception('No puzzle found')
+    solution = solve(puzzle)
+    if not solution:
+        raise Exception('No solution found')
+    for path in solution:
+        row, col = path[0]
+        x, y = col_coords[col], row_coords[row]
+        wnd.mousemove(x, y)
+        wnd.mousedown()
+        for row, col in path[1:]:
+            x, y = col_coords[col], row_coords[row]
+            wnd.mousemove(x, y)
+        wnd.mouseup()
 
 ################################################################################
 # Program
@@ -280,16 +330,20 @@ inputs = inputs.add_mutually_exclusive_group(required=True)
 inputs.add_argument('puzzle', nargs='?', help='solves a puzzle from a textual description')
 inputs.add_argument('-i', '--image', help='solves a puzzle from an image file')
 inputs.add_argument('-s', '--screen', action='store_true', help='solves a puzzle visible on the screen')
+inputs.add_argument('-a', '--auto', action='store_true', help='solves a puzzle fully automatically')
 args = parser.parse_args()
 
-if args.screen:
-    puzzle = parse_screenshot()
-elif args.image:
-    puzzle = parse_image(args.image)
-elif args.puzzle:
-    puzzle = args.puzzle
+if args.auto:
+    automate()
+else:
+    if args.screen:
+        puzzle = parse_screenshot()
+    elif args.image:
+        puzzle = parse_image(args.image)
+    elif args.puzzle:
+        puzzle = args.puzzle
 
-if args.v:
-    print('Puzzle:', puzzle)
+    if args.v:
+        print('Puzzle:', puzzle)
 
-draw(solve(puzzle))
+    draw(solve(puzzle))
