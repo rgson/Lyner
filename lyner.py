@@ -10,7 +10,9 @@ import tempfile
 import time
 
 ################################################################################
-# Solve puzzle
+# Base
+
+## Solve puzzle
 
 class Node():
 
@@ -125,43 +127,7 @@ class Board():
 def solve(description):
     return next(Board(description).solutions(), None)
 
-################################################################################
-# Draw output
-
-def draw(solution):
-    rows = 1 + max(position[0] for path in solution for position in path)
-    cols = 1 + max(position[1] for path in solution for position in path)
-    for n, path in enumerate(solution):
-        out = [[' '] * (cols * 2 - 1) for i in range(rows * 2 - 1)]
-        first, last = path[0], path[-1]
-        for i in range(len(path) - 1):
-            (a0, a1), (b0, b1) = path[i], path[i + 1] # The edge A->B was used.
-            if b0 < a0 or b0 == a0 and b1 < a1: # Make sure A comes before B.
-                a0, a1, b0, b1 = b0, b1, a0, a1
-            # Draw nodes.
-            out[a0 * 2][a1 * 2] = 'o'
-            out[b0 * 2][b1 * 2] = 'o'
-            # Draw edge.
-            south, west, east = a0 < b0, b1 < a1, a1 < b1
-            if south and west:
-                out[a0 * 2 + 1][a1 * 2 - 1] = '/'
-            elif south and east:
-                out[a0 * 2 + 1][a1 * 2 + 1] = '\\'
-            elif south:
-                out[a0 * 2 + 1][a1 * 2 + 0] = '|'
-            elif east:
-                out[a0 * 2 + 0][a1 * 2 + 1] = '-'
-            else:
-                raise Exception('Invalid solution (self-loop)'.format(a0, a1))
-        # Uppercase goal nodes.
-        out[path[ 0][0] * 2][path[ 0][1] * 2] = 'O'
-        out[path[-1][0] * 2][path[-1][1] * 2] = 'O'
-        # Print drawing
-        print('Path {0}'.format(n), '\n')
-        print('\t', '\n\t'.join(''.join(x) for x in out), '\n', sep='')
-
-################################################################################
-# Parse image
+## Parse image
 
 class Rectangle:
 
@@ -257,22 +223,84 @@ def parse_image(imagefile, return_coords=False):
     return description if not return_coords else (description, row_coords, col_coords)
 
 ################################################################################
-# Capture screen
+# Manual mode
 
-def parse_screenshot(return_coords=False):
-    if not sys.platform.startswith('linux'):
-        raise Exception('Unsupported platform')
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Capture window to temporary image file.
-        imagefile = tmpdir + '/screenshot.png'
-        res = subprocess.run(['timeout', '1', 'import', '-screen', '-window', 'LYNE', imagefile],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if res.returncode > 0:
-            raise Exception('Failed to capture LYNE window')
-        return parse_image(imagefile, return_coords=return_coords)
+def manual_mode(args):
+    if args.image:
+        puzzle = parse_image(args.image)
+        if not puzzle:
+            return print('Failed to parse image', file=sys.stderr)
+    else:
+        puzzle = args.puzzle
+        if not puzzle:
+            return print('Puzzle is empty', file=sys.stderr)
+    solution = solve(puzzle)
+    if not solution:
+        return print('Failed to solve puzzle', file=sys.stderr)
+    print('Puzzle:', puzzle)
+    if args.dont_draw:
+        print('Solution:', solution)
+    else:
+        print('Solution:')
+        draw(solution)
+
+def draw(solution):
+    rows = 1 + max(position[0] for path in solution for position in path)
+    cols = 1 + max(position[1] for path in solution for position in path)
+    for n, path in enumerate(solution):
+        out = [[' '] * (cols * 2 - 1) for i in range(rows * 2 - 1)]
+        first, last = path[0], path[-1]
+        for i in range(len(path) - 1):
+            (a0, a1), (b0, b1) = path[i], path[i + 1] # The edge A->B was used.
+            if b0 < a0 or b0 == a0 and b1 < a1: # Make sure A comes before B.
+                a0, a1, b0, b1 = b0, b1, a0, a1
+            # Draw nodes.
+            out[a0 * 2][a1 * 2] = 'o'
+            out[b0 * 2][b1 * 2] = 'o'
+            # Draw edge.
+            south, west, east = a0 < b0, b1 < a1, a1 < b1
+            if south and west:
+                out[a0 * 2 + 1][a1 * 2 - 1] = '/'
+            elif south and east:
+                out[a0 * 2 + 1][a1 * 2 + 1] = '\\'
+            elif south:
+                out[a0 * 2 + 1][a1 * 2 + 0] = '|'
+            elif east:
+                out[a0 * 2 + 0][a1 * 2 + 1] = '-'
+            else:
+                raise Exception('Invalid solution (self-loop)'.format(a0, a1))
+        # Uppercase goal nodes.
+        out[path[ 0][0] * 2][path[ 0][1] * 2] = 'O'
+        out[path[-1][0] * 2][path[-1][1] * 2] = 'O'
+        # Print drawing
+        print('Path {0}'.format(n), '\n')
+        print('\t', '\n\t'.join(''.join(x) for x in out), '\n', sep='')
 
 ################################################################################
-# Fully automated
+# Automatic mode
+
+def auto_mode(args):
+    if not sys.platform.startswith('linux'):
+        return print('Unsupported platform', file=sys.stderr)
+    wnd = XWindow('LYNE')
+    wnd.activate()
+    puzzle, row_coords, col_coords = parse_screenshot(return_coords=True)
+    if not puzzle:
+        return print('Failed to find puzzle', file=sys.stderr)
+    print('Puzzle:', puzzle)
+    solution = solve(puzzle)
+    if not solution:
+        return print('Failed to solve puzzle', file=sys.stderr)
+    print('Solution:', solution)
+    for path in solution:
+        row, col = path[0]
+        x, y = col_coords[col], row_coords[row]
+        wnd.mousemove(x, y)
+        wnd.mousedown()
+        for row, col in path[1:]:
+            x, y = col_coords[col], row_coords[row]
+            wnd.mousemove(x, y)
+        wnd.mouseup()
 
 class XWindow:
 
@@ -301,49 +329,31 @@ class XWindow:
     def mouseup(self):
         return self._action('xdotool mouseup 1')
 
-def automate():
-    wnd = XWindow('LYNE')
-    wnd.activate()
-    puzzle, row_coords, col_coords = parse_screenshot(return_coords=True)
-    if len(puzzle) == 0:
-        raise Exception('No puzzle found')
-    solution = solve(puzzle)
-    if not solution:
-        raise Exception('No solution found')
-    for path in solution:
-        row, col = path[0]
-        x, y = col_coords[col], row_coords[row]
-        wnd.mousemove(x, y)
-        wnd.mousedown()
-        for row, col in path[1:]:
-            x, y = col_coords[col], row_coords[row]
-            wnd.mousemove(x, y)
-        wnd.mouseup()
+def parse_screenshot(return_coords=False):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Capture window to temporary image file.
+        imagefile = tmpdir + '/screenshot.png'
+        res = subprocess.run(['timeout', '1', 'import', '-screen', '-window', 'LYNE', imagefile],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if res.returncode == 0:
+            return parse_image(imagefile, return_coords=return_coords)
 
 ################################################################################
-# Program
+# Arguments
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-v', action='store_true', help='increase output verbosity')
-inputs = parser.add_argument_group('puzzle input')
-inputs = inputs.add_mutually_exclusive_group(required=True)
-inputs.add_argument('puzzle', nargs='?', help='solves a puzzle from a textual description')
-inputs.add_argument('-i', '--image', help='solves a puzzle from an image file')
-inputs.add_argument('-s', '--screen', action='store_true', help='solves a puzzle visible on the screen')
-inputs.add_argument('-a', '--auto', action='store_true', help='solves a puzzle fully automatically')
+mode = parser.add_subparsers(title='mode', dest='mode')
+mode.required = True
+
+manual = mode.add_parser('manual', help='use manual input and produce textual output', description='use manual input and produce textual output')
+manual.add_argument('--dont-draw', help='present the solution in raw textual form', action='store_true')
+inputs = manual.add_argument_group('input method').add_mutually_exclusive_group(required=True)
+inputs.add_argument('puzzle', help='read the puzzle from a textual representation', nargs='?')
+inputs.add_argument('-i', '--image', help='read the puzzle from a saved image file')
+manual.set_defaults(func=manual_mode)
+
+auto = mode.add_parser('auto', help='solve live LYNE puzzles automatically', description='solve live LYNE puzzles automatically')
+auto.set_defaults(func=auto_mode)
+
 args = parser.parse_args()
-
-if args.auto:
-    automate()
-else:
-    if args.screen:
-        puzzle = parse_screenshot()
-    elif args.image:
-        puzzle = parse_image(args.image)
-    elif args.puzzle:
-        puzzle = args.puzzle
-
-    if args.v:
-        print('Puzzle:', puzzle)
-
-    draw(solve(puzzle))
+args.func(args)
