@@ -292,15 +292,16 @@ def auto_mode(args):
     if not solution:
         return print('Failed to solve puzzle', file=sys.stderr)
     print('Solution:', solution)
-    for path in solution:
-        row, col = path[0]
-        x, y = col_coords[col], row_coords[row]
-        wnd.mousemove(x, y)
-        wnd.mousedown()
-        for row, col in path[1:]:
+    if not args.dont_act:
+        for path in solution:
+            row, col = path[0]
             x, y = col_coords[col], row_coords[row]
             wnd.mousemove(x, y)
-        wnd.mouseup()
+            wnd.mousedown()
+            for row, col in path[1:]:
+                x, y = col_coords[col], row_coords[row]
+                wnd.mousemove(x, y)
+            wnd.mouseup()
 
 class XWindow:
 
@@ -353,6 +354,7 @@ inputs.add_argument('-i', '--image', help='read the puzzle from a saved image fi
 manual.set_defaults(func=manual_mode)
 
 auto = mode.add_parser('auto', help='solve live LYNE puzzles automatically', description='solve live LYNE puzzles automatically')
+auto.add_argument('--dont-act', help='print the solution instead of acting it out', action='store_true')
 auto.set_defaults(func=auto_mode)
 
 args = parser.parse_args()
