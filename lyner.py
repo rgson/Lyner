@@ -13,7 +13,8 @@ import time
 ################################################################################
 # Base
 
-## Solve puzzle
+def solve(description):
+    return next(Board(description).solutions(), None)
 
 class Node():
 
@@ -125,36 +126,6 @@ class Board():
         node.unvisit()
         paths[nodetype].pop()
 
-def solve(description):
-    return next(Board(description).solutions(), None)
-
-## Parse image
-
-class Rectangle:
-
-    def __init__(self, x, y):
-        self.left = self.right  = x
-        self.top  = self.bottom = y
-
-    def __contains__(self, point):
-        return (self.left <= point[0] <= self.right and
-                self.top  <= point[1] <= self.bottom)
-
-    def near(self, x, y, threshold=10):
-        return (self.left - threshold <= x <= self.right  + threshold and
-                self.top  - threshold <= y <= self.bottom + threshold )
-
-    def center(self):
-        return (round((self.left + self.right) / 2),
-                round((self.top + self.bottom) / 2))
-
-    def expand(self, x, y):
-        if (x, y) not in self:
-            self.left   = min(self.left,   x)
-            self.right  = max(self.right,  x)
-            self.top    = min(self.top,    y)
-            self.bottom = max(self.bottom, y)
-
 def parse_image(imagefile, return_coords=False):
     colors = {(168, 219, 168): 'a', # Triangle
               ( 59, 134, 134): 'b', # Diamond
@@ -222,6 +193,31 @@ def parse_image(imagefile, return_coords=False):
     # Convert to textual description.
     description = '/'.join(''.join(row) for row in grid)
     return description if not return_coords else (description, row_coords, col_coords)
+
+class Rectangle:
+
+    def __init__(self, x, y):
+        self.left = self.right  = x
+        self.top  = self.bottom = y
+
+    def __contains__(self, point):
+        return (self.left <= point[0] <= self.right and
+                self.top  <= point[1] <= self.bottom)
+
+    def near(self, x, y, threshold=10):
+        return (self.left - threshold <= x <= self.right  + threshold and
+                self.top  - threshold <= y <= self.bottom + threshold )
+
+    def center(self):
+        return (round((self.left + self.right) / 2),
+                round((self.top + self.bottom) / 2))
+
+    def expand(self, x, y):
+        if (x, y) not in self:
+            self.left   = min(self.left,   x)
+            self.right  = max(self.right,  x)
+            self.top    = min(self.top,    y)
+            self.bottom = max(self.bottom, y)
 
 ################################################################################
 # Manual mode
@@ -310,47 +306,6 @@ def auto_mode(args):
     except subprocess.CalledProcessError:
         print('Failed to find LYNE window', file=sys.stderr)
 
-class XWindow:
-
-    def __init__(self, id):
-        self.id = id
-
-    def activate(self):
-        return XWindow._action('xdotool windowactivate {0}'.format(self.id))
-
-    def mousemove(self, x, y):
-        return XWindow._action('xdotool mousemove --window {0} {1} {2}'.format(self.id, x, y))
-
-    def mousedown(self):
-        return XWindow._action('xdotool mousedown 1')
-
-    def mouseup(self):
-        return XWindow._action('xdotool mouseup 1')
-
-    def is_active(self):
-        try:
-            return XWindow.getactivewindow().id == self.id
-        except:
-            return False
-
-    @classmethod
-    def search(clazz, name):
-        res = XWindow._action('xdotool search --name ^{0}$'.format(name), delay=0)
-        id = str(res.stdout, 'utf-8').strip()
-        return clazz(id)
-
-    @classmethod
-    def getactivewindow(clazz):
-        res = XWindow._action('xdotool getactivewindow', delay=0)
-        id = str(res.stdout, 'utf-8').strip()
-        return clazz(id)
-
-    @staticmethod
-    def _action(cmd, delay=0.1):
-        res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        time.sleep(delay)
-        return res
-
 def program_exists(name):
     try:
         subprocess.run([name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -391,6 +346,47 @@ def act_out_solution(wnd, solution, row_coords, col_coords):
             x, y = col_coords[col], row_coords[row]
             wnd.mousemove(x, y)
         wnd.mouseup()
+
+class XWindow:
+
+    def __init__(self, id):
+        self.id = id
+
+    def activate(self):
+        return XWindow._action('xdotool windowactivate {0}'.format(self.id))
+
+    def mousemove(self, x, y):
+        return XWindow._action('xdotool mousemove --window {0} {1} {2}'.format(self.id, x, y))
+
+    def mousedown(self):
+        return XWindow._action('xdotool mousedown 1')
+
+    def mouseup(self):
+        return XWindow._action('xdotool mouseup 1')
+
+    def is_active(self):
+        try:
+            return XWindow.getactivewindow().id == self.id
+        except:
+            return False
+
+    @classmethod
+    def search(clazz, name):
+        res = XWindow._action('xdotool search --name ^{0}$'.format(name), delay=0)
+        id = str(res.stdout, 'utf-8').strip()
+        return clazz(id)
+
+    @classmethod
+    def getactivewindow(clazz):
+        res = XWindow._action('xdotool getactivewindow', delay=0)
+        id = str(res.stdout, 'utf-8').strip()
+        return clazz(id)
+
+    @staticmethod
+    def _action(cmd, delay=0.1):
+        res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        time.sleep(delay)
+        return res
 
 ################################################################################
 # Arguments
