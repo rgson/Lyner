@@ -117,14 +117,24 @@ class Board():
             if len(self.remaining_nodes(nodetype)) == 0:
                 yield from self._next_type(paths)
         else:
-            for edge in node.remaining_edges():
-                other = edge.a if edge.b is node else edge.b
-                if other.is_compatible(nodetype) and other.capacity > 0:
-                    edge.visit()
-                    yield from self._next_node(paths, nodetype, other)
-                    edge.unvisit()
+            for edge, other in Board._find_candidates(node, nodetype):
+                edge.visit()
+                yield from self._next_node(paths, nodetype, other)
+                edge.unvisit()
         node.unvisit()
         paths[nodetype].pop()
+
+    @staticmethod
+    def _find_candidates(node, nodetype):
+        candidates = [(e, e.a if e.b is node else e.b) for e in node.remaining_edges()]
+        candidates = [(e, n) for e, n in candidates if n.is_compatible(nodetype) and n.capacity > 0]
+        candidates = sorted(candidates, key=Board._candidate_priority)
+        return candidates
+
+    @staticmethod
+    def _candidate_priority(candidate):
+        edge, node = candidate
+        return -(node.capacity + int(node.symbol.isdigit())) # Prefer neutral nodes.
 
 def parse_image(imagefile, return_coords=False):
     colors = {(168, 219, 168): 'a', # Triangle
