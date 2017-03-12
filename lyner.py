@@ -326,15 +326,15 @@ def wait_until_puzzle():
             return (puzzle, row_coords, col_coords)
         time.sleep(1)
 
-
 def parse_screenshot(return_coords=False):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Capture window to temporary image file.
-        imagefile = tmpdir + '/screenshot.png'
-        res = subprocess.run(['timeout', '1', 'import', '-screen', '-window', 'LYNE', imagefile],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if res.returncode == 0:
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            imagefile = tmpdir + '/screenshot.png'
+            res = subprocess.run(['timeout', '1', 'import', '-screen', '-window', 'LYNE', imagefile],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
             return parse_image(imagefile, return_coords=return_coords)
+    except subprocess.CalledProcessError:
+        return None
 
 def act_out_solution(wnd, solution, row_coords, col_coords):
     for path in solution:
