@@ -33,7 +33,6 @@ class LiveSourceTarget(Source, Target):
                 puzzle = None
                 while not puzzle:
                     _wait_until_active(self.window)
-                    print('Looking for LYNE puzzle...')
                     res = subprocess.run(['timeout', '1', 'import', '-screen', '-window', 'LYNE', imagefile],
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
                     puzzle, self.row_coords, self.col_coords = parse_image(imagefile, return_coords=True)
@@ -46,6 +45,7 @@ class LiveSourceTarget(Source, Target):
             raise LynerException('Failed to take screenshot')
 
     def put_solution(self, solution):
+        print('Solution:', solution)
         _wait_until_active(self.window)
         for path in solution:
             row, col = path[0]
