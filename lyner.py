@@ -11,132 +11,86 @@ import tempfile
 import time
 
 ################################################################################
-# Base
+### Lyner
+################################################################################
 
-def solve(description):
-    return next(Board(description).solutions(), None)
+class Lyner:
 
-class Node():
+    def __init__(self, source, solver, target):
+        self.source = source
+        self.solver = solver
+        self.target = target
 
-    def __init__(self, symbol, position):
-        self.symbol = symbol
-        self.nodetype = symbol.upper()
-        self.position = position
-        self.capacity = int(symbol) if symbol.isdigit() else 1
-        self.edges = []
+    def run(self):
+        puzzle = self.source.get_puzzle()
+        if not puzzle:
+            raise LynerException('Failed to get puzzle')
+        solution = self.solver.solve_puzzle(puzzle)
+        if not solution:
+            raise LynerException('Failed to solve puzzle')
+        self.target.put_solution(solution)
 
-    def visit(self):
-        self.capacity -= 1
+################################################################################
+### Source
+################################################################################
 
-    def unvisit(self):
-        self.capacity += 1
+class Source:
 
-    def is_compatible(self, symbol):
-        return self.symbol.isdigit() or symbol.upper() == self.nodetype
+    def get_puzzle(self):
+        raise NotImplementedError('Must use a Source subclass')
 
-    def is_goal(self):
-        return self.symbol.isupper()
+################################################################################
+### Solver
+################################################################################
 
-    def remaining_edges(self):
-        return [edge for edge in self.edges if not edge.occupied]
+class Solver:
 
-class Edge():
+    def solve_puzzle(self, puzzle):
+        raise NotImplementedError('Must use a Solver subclass')
 
-    def __init__(self, node_a, node_b):
-        self.a = node_a
-        self.b = node_b
-        self.occupied = False
-        self.crosses = None
+################################################################################
+### Target
+################################################################################
 
-    def visit(self):
-        self.occupied = True
-        if self.crosses is not None:
-            self.crosses.occupied = True
+class Target:
 
-    def unvisit(self):
-        self.occupied = False
-        if self.crosses is not None:
-            self.crosses.occupied = False
+    def put_solution(self, solution):
+        raise NotImplementedError('Must use a Target subclass')
 
-class Board():
+################################################################################
+### LynerException
+################################################################################
 
-    def __init__(self, description):
-        self.description = description
-        # Create nodes.
-        self.nodes_2d = [[Node(value, (i, j))
-                         for j, value in enumerate(row)]
-                         for i, row in enumerate(description.split('/'))]
-        self.nodes = [node for row in self.nodes_2d for node in row]
-        # Create edges.
-        last_se = None
-        for node in self.nodes:
-            n0, n1 = node.position
-            neighbors = (self.node(n0 + i, n1 + j)
-                         for i, j in [(0, 1), (1, 0), (1, 1), (1, -1)])
-            e, s, se, sw = (Edge(node, neighbor) if neighbor is not None else None
-                            for neighbor in neighbors)
-            # Add edges to nodes.
-            for edge in (e, s, se, sw):
-                if edge is not None:
-                    edge.a.edges.append(edge)
-                    edge.b.edges.append(edge)
-            # Connect crossing edges.
-            if sw is not None and last_se is not None:
-                sw.crosses = last_se
-                last_se.crosses = sw
-            last_se = se
+class LynerException(Exception):
+    pass
 
-    def node(self, row, col):
-        if 0 <= row < len(self.nodes_2d) and 0 <= col < len(self.nodes_2d[row]):
-            return self.nodes_2d[row][col]
-        return None
+################################################################################
+### TextSource
+################################################################################
 
-    def remaining_nodes(self, nodetype=None):
-        return [n for n in self.nodes
-                if n.capacity > 0 and (nodetype is None or n.nodetype == nodetype)]
+class TextSource(Source):
 
-    def remaining_goals(self, nodetype=None):
-        return [n for n in self.remaining_nodes(nodetype) if n.is_goal()]
+    def __init__(self, puzzle=None):
+        self.puzzle = puzzle
 
-    def solutions(self):
-        for solution in self._next_type(collections.defaultdict(list)):
-            yield [[node.position for node in path] for path in solution.values()]
+    def get_puzzle(self):
+        return self.puzzle
 
-    def _next_type(self, paths):
-        remaining = self.remaining_goals()
-        if len(remaining) == 0:
-            if len(self.remaining_nodes()) == 0:
-                yield paths # This is a valid solution.
-        else:
-            yield from self._next_node(paths, remaining[0].nodetype, remaining[0])
+################################################################################
+### ImageSource
+################################################################################
 
-    def _next_node(self, paths, nodetype, node):
-        node.visit()
-        paths[nodetype].append(node)
-        if len(self.remaining_goals(nodetype)) == 0:
-            if len(self.remaining_nodes(nodetype)) == 0:
-                yield from self._next_type(paths)
-        else:
-            for edge, other in Board._find_candidates(node, nodetype):
-                edge.visit()
-                yield from self._next_node(paths, nodetype, other)
-                edge.unvisit()
-        node.unvisit()
-        paths[nodetype].pop()
+class ImageSource(Source):
 
-    @staticmethod
-    def _find_candidates(node, nodetype):
-        candidates = [(e, e.a if e.b is node else e.b) for e in node.remaining_edges()]
-        candidates = [(e, n) for e, n in candidates if n.is_compatible(nodetype) and n.capacity > 0]
-        candidates = sorted(candidates, key=Board._candidate_priority)
-        return candidates
+    def __init__(self, image=None):
+        self.image = image
 
-    @staticmethod
-    def _candidate_priority(candidate):
-        edge, node = candidate
-        return -(node.capacity + int(node.symbol.isdigit())) # Prefer neutral nodes.
+    def get_puzzle(self):
+        if self.image is None:
+            raise LynerException('No image has been provided')
+        return _parse_image(self.image)
 
-def parse_image(imagefile, return_coords=False):
+def _parse_image(imagefile, return_coords=False):
     colors = {(168, 219, 168): 'a', # Triangle
               ( 59, 134, 134): 'b', # Diamond
               (194, 120,  92): 'c', # Square
@@ -201,8 +155,154 @@ def parse_image(imagefile, return_coords=False):
             r, c = row_coords[i], col_coords[j]
             row[j] = next((n[0] for n in grid_rows[r] if n in grid_cols[c]), '0')
     # Convert to textual description.
-    description = '/'.join(''.join(row) for row in grid)
-    return description if not return_coords else (description, row_coords, col_coords)
+    puzzle = '/'.join(''.join(row) for row in grid)
+    return puzzle if not return_coords else (puzzle, row_coords, col_coords)
+
+################################################################################
+### DefaultSolver
+################################################################################
+
+class DefaultSolver(Solver):
+
+    def solve_puzzle(self, puzzle, extras=None):
+        try:
+            return next(_solutions(Board(puzzle)))
+        except StopIteration:
+            raise LynerException('Failed to solve puzzle')
+
+def _solutions(board):
+    for solution in _next_type(board, collections.defaultdict(list)):
+        yield [[node.position for node in path] for path in solution.values()]
+
+def _next_type(board, paths):
+    remaining = board.remaining_goals()
+    if len(remaining) == 0:
+        if len(board.remaining_nodes()) == 0:
+            yield paths # This is a valid solution.
+    else:
+        yield from _next_node(board, paths, remaining[0].nodetype, remaining[0])
+
+def _next_node(board, paths, nodetype, node):
+    node.visit()
+    paths[nodetype].append(node)
+    if len(board.remaining_goals(nodetype)) == 0:
+        if len(board.remaining_nodes(nodetype)) == 0:
+            yield from _next_type(board, paths)
+    else:
+        for edge, other in _find_candidates(node, nodetype):
+            edge.visit()
+            yield from _next_node(board, paths, nodetype, other)
+            edge.unvisit()
+    node.unvisit()
+    paths[nodetype].pop()
+
+def _find_candidates(node, nodetype):
+    candidates = [(e, e.a if e.b is node else e.b) for e in node.remaining_edges()]
+    candidates = [(e, n) for e, n in candidates if n.is_compatible(nodetype) and n.capacity > 0]
+    candidates = sorted(candidates, key=_candidate_priority)
+    return candidates
+
+def _candidate_priority(candidate):
+    edge, node = candidate
+    return -(node.capacity + int(node.symbol.isdigit())) # Prefer neutral nodes.
+
+################################################################################
+### Board
+################################################################################
+
+class Board:
+
+    def __init__(self, puzzle):
+        self.puzzle = puzzle
+        # Create nodes.
+        self.nodes_2d = [[Node(value, (i, j))
+                         for j, value in enumerate(row)]
+                         for i, row in enumerate(puzzle.split('/'))]
+        self.nodes = [node for row in self.nodes_2d for node in row]
+        # Create edges.
+        last_se = None
+        for node in self.nodes:
+            n0, n1 = node.position
+            neighbors = (self.node(n0 + i, n1 + j)
+                         for i, j in [(0, 1), (1, 0), (1, 1), (1, -1)])
+            e, s, se, sw = (Edge(node, neighbor) if neighbor is not None else None
+                            for neighbor in neighbors)
+            # Add edges to nodes.
+            for edge in (e, s, se, sw):
+                if edge is not None:
+                    edge.a.edges.append(edge)
+                    edge.b.edges.append(edge)
+            # Connect crossing edges.
+            if sw is not None and last_se is not None:
+                sw.crosses = last_se
+                last_se.crosses = sw
+            last_se = se
+
+    def node(self, row, col):
+        if 0 <= row < len(self.nodes_2d) and 0 <= col < len(self.nodes_2d[row]):
+            return self.nodes_2d[row][col]
+        return None
+
+    def remaining_nodes(self, nodetype=None):
+        return [n for n in self.nodes
+                if n.capacity > 0 and (nodetype is None or n.nodetype == nodetype)]
+
+    def remaining_goals(self, nodetype=None):
+        return [n for n in self.remaining_nodes(nodetype) if n.is_goal()]
+
+################################################################################
+### Node
+################################################################################
+
+class Node:
+
+    def __init__(self, symbol, position):
+        self.symbol = symbol
+        self.nodetype = symbol.upper()
+        self.position = position
+        self.capacity = int(symbol) if symbol.isdigit() else 1
+        self.edges = []
+
+    def visit(self):
+        self.capacity -= 1
+
+    def unvisit(self):
+        self.capacity += 1
+
+    def is_compatible(self, symbol):
+        return self.symbol.isdigit() or symbol.upper() == self.nodetype
+
+    def is_goal(self):
+        return self.symbol.isupper()
+
+    def remaining_edges(self):
+        return [edge for edge in self.edges if not edge.occupied]
+
+################################################################################
+### Edge
+################################################################################
+
+class Edge:
+
+    def __init__(self, node_a, node_b):
+        self.a = node_a
+        self.b = node_b
+        self.occupied = False
+        self.crosses = None
+
+    def visit(self):
+        self.occupied = True
+        if self.crosses is not None:
+            self.crosses.occupied = True
+
+    def unvisit(self):
+        self.occupied = False
+        if self.crosses is not None:
+            self.crosses.occupied = False
+
+################################################################################
+### Rectangle
+################################################################################
 
 class Rectangle:
 
@@ -230,132 +330,118 @@ class Rectangle:
             self.bottom = max(self.bottom, y)
 
 ################################################################################
-# Manual mode
+### TextTarget
+################################################################################
 
-def manual_mode(args):
-    if args.image:
-        puzzle = parse_image(args.image)
-        if not puzzle:
-            return print('Failed to parse image', file=sys.stderr)
-    else:
-        puzzle = args.puzzle
-        if not puzzle:
-            return print('Puzzle is empty', file=sys.stderr)
-    solution = solve(puzzle)
-    if not solution:
-        return print('Failed to solve puzzle', file=sys.stderr)
-    print('Puzzle:', puzzle)
-    if args.dont_draw:
+class TextTarget(Target):
+
+    def put_solution(self, solution):
         print('Solution:', solution)
-    else:
-        print('Solution:')
-        draw(solution)
-
-def draw(solution):
-    rows = 1 + max(position[0] for path in solution for position in path)
-    cols = 1 + max(position[1] for path in solution for position in path)
-    for n, path in enumerate(solution):
-        out = [[' '] * (cols * 2 - 1) for i in range(rows * 2 - 1)]
-        first, last = path[0], path[-1]
-        for i in range(len(path) - 1):
-            (a0, a1), (b0, b1) = path[i], path[i + 1] # The edge A->B was used.
-            if b0 < a0 or b0 == a0 and b1 < a1: # Make sure A comes before B.
-                a0, a1, b0, b1 = b0, b1, a0, a1
-            # Draw nodes.
-            out[a0 * 2][a1 * 2] = 'o'
-            out[b0 * 2][b1 * 2] = 'o'
-            # Draw edge.
-            south, west, east = a0 < b0, b1 < a1, a1 < b1
-            if south and west:
-                out[a0 * 2 + 1][a1 * 2 - 1] = '/'
-            elif south and east:
-                out[a0 * 2 + 1][a1 * 2 + 1] = '\\'
-            elif south:
-                out[a0 * 2 + 1][a1 * 2 + 0] = '|'
-            elif east:
-                out[a0 * 2 + 0][a1 * 2 + 1] = '-'
-            else:
-                raise Exception('Invalid solution (self-loop)'.format(a0, a1))
-        # Uppercase goal nodes.
-        out[path[ 0][0] * 2][path[ 0][1] * 2] = 'O'
-        out[path[-1][0] * 2][path[-1][1] * 2] = 'O'
-        # Print drawing
-        print('Path {0}'.format(n), '\n')
-        print('\t', '\n\t'.join(''.join(x) for x in out), '\n', sep='')
 
 ################################################################################
-# Automatic mode
+### DrawTarget
+################################################################################
 
-def auto_mode(args):
-    if not sys.platform.startswith('linux'):
-        return print('Unsupported platform', file=sys.stderr)
-    for p in ('timeout', 'import', 'xdotool'):
-        if not program_exists(p):
-            return print('Program {0} must be installed'.format(p), file=sys.stderr)
-    try:
-        print('Searching for the LYNE window...')
-        wnd = XWindow.search('LYNE')
-        # Look for puzzles to solve until interrupted.
+class DrawTarget(Target):
+
+    def put_solution(self, solution):
+        rows = 1 + max(position[0] for path in solution for position in path)
+        cols = 1 + max(position[1] for path in solution for position in path)
+        for n, path in enumerate(solution):
+            out = [[' '] * (cols * 2 - 1) for i in range(rows * 2 - 1)]
+            first, last = path[0], path[-1]
+            for i in range(len(path) - 1):
+                (a0, a1), (b0, b1) = path[i], path[i + 1] # The edge A->B was used.
+                if b0 < a0 or b0 == a0 and b1 < a1: # Make sure A comes before B.
+                    a0, a1, b0, b1 = b0, b1, a0, a1
+                # Draw nodes.
+                out[a0 * 2][a1 * 2] = 'o'
+                out[b0 * 2][b1 * 2] = 'o'
+                # Draw edge.
+                south, west, east = a0 < b0, b1 < a1, a1 < b1
+                if south and west:
+                    out[a0 * 2 + 1][a1 * 2 - 1] = '/'
+                elif south and east:
+                    out[a0 * 2 + 1][a1 * 2 + 1] = '\\'
+                elif south:
+                    out[a0 * 2 + 1][a1 * 2 + 0] = '|'
+                elif east:
+                    out[a0 * 2 + 0][a1 * 2 + 1] = '-'
+                else:
+                    raise LynerException('Invalid solution (self-loop)'.format(a0, a1))
+            # Uppercase goal nodes.
+            out[path[ 0][0] * 2][path[ 0][1] * 2] = 'O'
+            out[path[-1][0] * 2][path[-1][1] * 2] = 'O'
+            # Print drawing
+            print('Path {0}'.format(n), '\n')
+            print('\t', '\n\t'.join(''.join(x) for x in out), '\n', sep='')
+
+################################################################################
+### LiveSourceTarget
+################################################################################
+
+class LiveSourceTarget(Source, Target):
+
+    def __init__(self):
+        if not sys.platform.startswith('linux'):
+            raise Exception('Unsupported platform')
+        for p in ('timeout', 'import', 'xdotool'):
+            if not _program_exists(p):
+                raise Exception('LiveSourceTarget requires the program "{0}"'.format(p))
         try:
-            while True:
-                wait_until_active(wnd)
-                print('Watching for puzzles...')
-                puzzle, row_coords, col_coords = wait_until_puzzle()
-                print('Puzzle:', puzzle)
-                solution = solve(puzzle)
-                if not solution:
-                    print('Failed to solve puzzle', file=sys.stderr)
-                    continue
-                print('Solution:', solution)
-                if not args.dont_act:
-                    wait_until_active(wnd)
-                    act_out_solution(wnd, solution, row_coords, col_coords)
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
-    except subprocess.CalledProcessError:
-        print('Failed to find LYNE window', file=sys.stderr)
+            self.window = XWindow.search('LYNE')
+        except subprocess.CalledProcessError:
+            raise LynerException('Failed to find LYNE window')
+        self.row_coords = None
+        self.col_coords = None
 
-def program_exists(name):
+    def get_puzzle(self):
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                imagefile = tmpdir + '/screenshot.png'
+                puzzle = None
+                while not puzzle:
+                    _wait_until_active(self.window)
+                    print('Looking for LYNE puzzle...')
+                    res = subprocess.run(['timeout', '1', 'import', '-screen', '-window', 'LYNE', imagefile],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+                    puzzle, self.row_coords, self.col_coords = _parse_image(imagefile, return_coords=True)
+                    if not puzzle:
+                        print('Failed to find puzzle')
+                        time.sleep(2)
+                print('Puzzle:', puzzle)
+                return puzzle
+        except subprocess.CalledProcessError:
+            raise LynerException('Failed to take screenshot')
+
+    def put_solution(self, solution):
+        _wait_until_active(self.window)
+        for path in solution:
+            row, col = path[0]
+            x, y = self.col_coords[col], self.row_coords[row]
+            self.window.mousemove(x, y)
+            self.window.mousedown()
+            for row, col in path[1:]:
+                x, y = self.col_coords[col], self.row_coords[row]
+                self.window.mousemove(x, y)
+            self.window.mouseup()
+
+def _wait_until_active(wnd):
+    if not wnd.is_active():
+        print('Paused. Please activate the LYNE window to resume.')
+        while not wnd.is_active():
+            time.sleep(1)
+
+def _program_exists(name):
     try:
         subprocess.run([name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
     except OSError as e:
         return e.errno != os.errno.ENOENT
 
-def wait_until_active(wnd):
-    if not wnd.is_active():
-        print('Paused. Please activate the LYNE window to resume.')
-        while not wnd.is_active():
-            time.sleep(1)
-
-def wait_until_puzzle():
-    while True:
-        puzzle, row_coords, col_coords = parse_screenshot(return_coords=True)
-        if puzzle:
-            return (puzzle, row_coords, col_coords)
-        time.sleep(1)
-
-def parse_screenshot(return_coords=False):
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            imagefile = tmpdir + '/screenshot.png'
-            res = subprocess.run(['timeout', '1', 'import', '-screen', '-window', 'LYNE', imagefile],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            return parse_image(imagefile, return_coords=return_coords)
-    except subprocess.CalledProcessError:
-        return None
-
-def act_out_solution(wnd, solution, row_coords, col_coords):
-    for path in solution:
-        row, col = path[0]
-        x, y = col_coords[col], row_coords[row]
-        wnd.mousemove(x, y)
-        wnd.mousedown()
-        for row, col in path[1:]:
-            x, y = col_coords[col], row_coords[row]
-            wnd.mousemove(x, y)
-        wnd.mouseup()
+################################################################################
+### XWindow
+################################################################################
 
 class XWindow:
 
@@ -363,16 +449,16 @@ class XWindow:
         self.id = id
 
     def activate(self):
-        return XWindow._action('xdotool windowactivate {0}'.format(self.id))
+        return _action('xdotool windowactivate {0}'.format(self.id))
 
     def mousemove(self, x, y):
-        return XWindow._action('xdotool mousemove --window {0} {1} {2}'.format(self.id, x, y))
+        return _action('xdotool mousemove --window {0} {1} {2}'.format(self.id, x, y))
 
     def mousedown(self):
-        return XWindow._action('xdotool mousedown 1')
+        return _action('xdotool mousedown 1')
 
     def mouseup(self):
-        return XWindow._action('xdotool mouseup 1')
+        return _action('xdotool mouseup 1')
 
     def is_active(self):
         try:
@@ -382,24 +468,53 @@ class XWindow:
 
     @classmethod
     def search(clazz, name):
-        res = XWindow._action('xdotool search --name ^{0}$'.format(name), delay=0)
+        res = _action('xdotool search --name ^{0}$'.format(name), delay=0)
         id = str(res.stdout, 'utf-8').strip()
         return clazz(id)
 
     @classmethod
     def getactivewindow(clazz):
-        res = XWindow._action('xdotool getactivewindow', delay=0)
+        res = _action('xdotool getactivewindow', delay=0)
         id = str(res.stdout, 'utf-8').strip()
         return clazz(id)
 
-    @staticmethod
-    def _action(cmd, delay=0.025):
-        res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        time.sleep(delay)
-        return res
+def _action(cmd, delay=0.025):
+    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    time.sleep(delay)
+    return res
 
 ################################################################################
-# Arguments
+### Manual mode
+################################################################################
+
+def manual_mode(args):
+    solver = DefaultSolver()
+    source = TextSource(args.puzzle) if args.puzzle else ImageSource(args.image)
+    target = TextTarget() if args.dont_draw else DrawTarget()
+    lyner  = Lyner(source, solver, target)
+    lyner.run()
+
+################################################################################
+### Automatic mode
+################################################################################
+
+def auto_mode(args):
+    source = LiveSourceTarget()
+    solver = DefaultSolver()
+    target = source if not args.dont_act else TextTarget()
+    lyner = Lyner(source, solver, target)
+    try:
+        while True:
+            try:
+                lyner.run()
+            except LynerException as e:
+                print(str(e), file=sys.stderr)
+    except KeyboardInterrupt:
+        pass
+
+################################################################################
+### Arguments
+################################################################################
 
 parser = argparse.ArgumentParser()
 mode = parser.add_subparsers(title='mode', dest='mode')
@@ -417,4 +532,8 @@ auto.add_argument('--dont-act', help='print the solution instead of acting it ou
 auto.set_defaults(func=auto_mode)
 
 args = parser.parse_args()
-args.func(args)
+
+try:
+    args.func(args)
+except Exception as e:
+    print(str(e), file=sys.stderr)
