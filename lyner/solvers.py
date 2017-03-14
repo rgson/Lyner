@@ -9,7 +9,7 @@ from .utility import Board
 
 class GuidedDepthFirstSolver(Solver):
 
-    def solve_puzzle(self, puzzle, extras=None):
+    def solve_puzzle(self, puzzle):
         try:
             return next(_solutions(Board(puzzle)))
         except StopIteration:
