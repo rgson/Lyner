@@ -29,12 +29,12 @@ Some examples:
 
 Level                      | Text
 ---------------------------|-----
-[A  3](test-image/a03.png) | `A0A/aaa`
-[A  6](test-image/a06.png) | `Aaa/B0A/bbB`
-[A 17](test-image/a17.png) | `AB/2b/AB`
-[B  9](test-image/b09.png) | `ABC/abc/ABC`
-[B 18](test-image/b18.png) | `BAC/022/0c2/CAB`
-[B 25](test-image/b25.png) | `ACB/2C2/acb/B2A`
+[A  3](test-images/a03.png) | `A0A/aaa`
+[A  6](test-images/a06.png) | `Aaa/B0A/bbB`
+[A 17](test-images/a17.png) | `AB/2b/AB`
+[B  9](test-images/b09.png) | `ABC/abc/ABC`
+[B 18](test-images/b18.png) | `BAC/022/0c2/CAB`
+[B 25](test-images/b25.png) | `ACB/2C2/acb/B2A`
 
 In LYNE, puzzles include at most three colors (A, B, C) and uncolored nodes have a capacity of at most four (1, 2, 3, 4). Values outside these ranges should work, but have not been actively tested.
 
