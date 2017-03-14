@@ -11,7 +11,7 @@ from lyner.linux import LiveSourceTarget
 ################################################################################
 
 def manual_mode(args):
-    solver = DefaultSolver()
+    solver = GuidedDepthFirstSolver()
     source = TextSource(args.puzzle) if args.puzzle else ImageSource(args.image)
     target = TextTarget() if args.dont_draw else DrawTarget()
     lyner  = Lyner(source, solver, target)
@@ -23,7 +23,7 @@ def manual_mode(args):
 
 def auto_mode(args):
     source = LiveSourceTarget()
-    solver = DefaultSolver()
+    solver = GuidedDepthFirstSolver()
     target = source if not args.dont_act else TextTarget()
     lyner = Lyner(source, solver, target)
     try:

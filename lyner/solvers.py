@@ -4,10 +4,10 @@ from .base import Solver, LynerException
 from .utility import Board
 
 ################################################################################
-### DefaultSolver
+### GuidedDepthFirstSolver
 ################################################################################
 
-class DefaultSolver(Solver):
+class GuidedDepthFirstSolver(Solver):
 
     def solve_puzzle(self, puzzle, extras=None):
         try:
