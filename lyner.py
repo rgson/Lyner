@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import time
 
 from lyner import *
 from lyner.linux import LiveSourceTarget
@@ -32,6 +33,7 @@ def auto_mode(args):
                 lyner.run()
             except LynerException as e:
                 print(str(e), file=sys.stderr)
+            time.sleep(2)
     except KeyboardInterrupt:
         pass
 
